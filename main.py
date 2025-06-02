@@ -1,70 +1,67 @@
 import json
 import logging
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# بارگذاری توکن از فایل config.json
+# بارگذاری توکن ربات
 with open("config.json", "r", encoding="utf-8") as f:
-    token = json.load(f)["TOKEN"]
+    config = json.load(f)
+TOKEN = config["TOKEN"]
 
-# بارگذاری محتوای کلی پایه هفتم
+# بارگذاری فهرست فصل‌ها
 with open("content_7th.json", "r", encoding="utf-8") as f:
-    content = json.load(f)
+    content_7th = json.load(f)
 
-# بارگذاری درسنامه فصل دوم (عددهای صحیح)
-with open("lesson_ch2_7th_v3.json", "r", encoding="utf-8") as f:
-    lessons_f2 = json.load(f)
+# تعریف مسیر فایل‌های درسنامه به تفکیک فصل
+LESSON_FILES = {
+    "عددهای صحیح": "lesson_ch2_7th_v3.json"
+    # سایر فصل‌ها را در آینده اضافه کن
+}
 
-# فعال‌سازی لاگ
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-
+logging.basicConfig(level=logging.INFO)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("پایه هفتم", callback_data="grade_7")]
-    ]
-    await update.message.reply_text("سلام! پایه مورد نظر رو انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = []
+    for فصل in content_7th["فصل‌ها"]:
+        keyboard.append([InlineKeyboardButton(فصل["عنوان"], callback_data=f"فصل:{فصل['عنوان']}")])
+    await update.message.reply_text("یکی از فصل‌های زیر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     data = query.data
 
-    # انتخاب پایه هفتم
-    if data == "grade_7":
-        chapters = content["فصل‌ها"]
-        keyboard = [[InlineKeyboardButton(ch["عنوان"], callback_data=f"chapter_{i}")] for i, ch in enumerate(chapters)]
-        await query.edit_message_text("فصل مورد نظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+    if data.startswith("فصل:"):
+        selected_chapter = data.split(":")[1]
+        filename = LESSON_FILES.get(selected_chapter)
 
-    # انتخاب یکی از فصل‌های هفتم
-    elif data.startswith("chapter_"):
-        index = int(data.split("_")[1])
-        chapter_title = content["فصل‌ها"][index]["عنوان"]
+        if not filename:
+            await query.edit_message_text("برای این فصل هنوز درسنامه‌ای ثبت نشده است.")
+            return
 
-        # اگر فصل دوم (عددهای صحیح) باشد، درسنامه‌ها را از فایل جداگانه لود کن
-        if chapter_title == "عددهای صحیح":
-            keyboard = [
-                [InlineKeyboardButton(lesson["عنوان"], callback_data=f"lesson_f2_{i}")]
-                for i, lesson in enumerate(lessons_f2["درسنامه‌ها"])
-            ]
-            await query.edit_message_text(f"درس‌های فصل «{chapter_title}» را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            await query.edit_message_text(f"محتوای فصل «{chapter_title}» هنوز بارگذاری نشده.")
+        with open(filename, "r", encoding="utf-8") as f:
+            lesson_data = json.load(f)
 
-    # نمایش محتوای درس‌ از فصل دوم
-    elif data.startswith("lesson_f2_"):
-        index = int(data.split("_")[-1])
-        lesson = lessons_f2["درسنامه‌ها"][index]
-        await query.edit_message_text(f"📘 {lesson['عنوان']}\n\n{lesson['متن']}")
+        keyboard = [
+            [InlineKeyboardButton(lesson["عنوان"], callback_data=f"درس:{selected_chapter}:{lesson['عنوان']}")]
+            for lesson in lesson_data["درسنامه‌ها"]
+        ]
+        await query.edit_message_text(f"مباحث فصل «{selected_chapter}» را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
+    elif data.startswith("درس:"):
+        _, chapter, lesson_title = data.split(":", 2)
+        filename = LESSON_FILES.get(chapter)
+        if filename:
+            with open(filename, "r", encoding="utf-8") as f:
+                lesson_data = json.load(f)
+                for lesson in lesson_data["درسنامه‌ها"]:
+                    if lesson["عنوان"] == lesson_title:
+                        await query.edit_message_text(f"📘 {lesson['عنوان']}\n\n{lesson['متن']}")
+                        return
+        await query.edit_message_text("خطایی در بارگذاری درس پیش آمده.")
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(token).build()
-
+    app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(handle_buttons))
-
-    print("ربات آماده است...")
+    app.add_handler(CallbackQueryHandler(handle_callback))
     app.run_polling()
