@@ -1,46 +1,70 @@
 import json
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import logging
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# تابع بارگذاری محتوا از فایل JSON
-def load_lessons(filename='lesson_ch2_7th_v3.json'):
-    with open(filename, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data
+# بارگذاری توکن از فایل config.json
+with open("config.json", "r", encoding="utf-8") as f:
+    token = json.load(f)["TOKEN"]
 
-# فرمان /start
+# بارگذاری محتوای کلی پایه هفتم
+with open("content_7th.json", "r", encoding="utf-8") as f:
+    content = json.load(f)
+
+# بارگذاری درسنامه فصل دوم (عددهای صحیح)
+with open("lesson_ch2_7th_v3.json", "r", encoding="utf-8") as f:
+    lessons_f2 = json.load(f)
+
+# فعال‌سازی لاگ
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "سلام! من ربات آموزشی ریاضی هستم.\n"
-        "برای دیدن درسنامه این فصل، دستور /lesson را بزن."
-    )
+    keyboard = [
+        [InlineKeyboardButton("پایه هفتم", callback_data="grade_7")]
+    ]
+    await update.message.reply_text("سلام! پایه مورد نظر رو انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# فرمان /lesson
-async def lesson(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = load_lessons()
-    lessons = data.get("درسنامه‌ها", [])
 
-    response = f"فصل: {data.get('فصل', '')}\n\n"
+async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    for lesson in lessons:
-        title = lesson.get("عنوان", "")
-        text = lesson.get("متن", "")
-        response += f"📚 {title}\n{text}\n\n"
+    data = query.data
 
-    # محدود کردن طول پیام اگر طولانی بود (تلگرام محدودیت داره)
-    if len(response) > 4000:
-        response = response[:3990] + "\n..."
+    # انتخاب پایه هفتم
+    if data == "grade_7":
+        chapters = content["فصل‌ها"]
+        keyboard = [[InlineKeyboardButton(ch["عنوان"], callback_data=f"chapter_{i}")] for i, ch in enumerate(chapters)]
+        await query.edit_message_text("فصل مورد نظر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    await update.message.reply_text(response)
+    # انتخاب یکی از فصل‌های هفتم
+    elif data.startswith("chapter_"):
+        index = int(data.split("_")[1])
+        chapter_title = content["فصل‌ها"][index]["عنوان"]
+
+        # اگر فصل دوم (عددهای صحیح) باشد، درسنامه‌ها را از فایل جداگانه لود کن
+        if chapter_title == "عددهای صحیح":
+            keyboard = [
+                [InlineKeyboardButton(lesson["عنوان"], callback_data=f"lesson_f2_{i}")]
+                for i, lesson in enumerate(lessons_f2["درسنامه‌ها"])
+            ]
+            await query.edit_message_text(f"درس‌های فصل «{chapter_title}» را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await query.edit_message_text(f"محتوای فصل «{chapter_title}» هنوز بارگذاری نشده.")
+
+    # نمایش محتوای درس‌ از فصل دوم
+    elif data.startswith("lesson_f2_"):
+        index = int(data.split("_")[-1])
+        lesson = lessons_f2["درسنامه‌ها"][index]
+        await query.edit_message_text(f"📘 {lesson['عنوان']}\n\n{lesson['متن']}")
+
 
 if __name__ == "__main__":
-    # جایگزین کن با توکن ربات تلگرامت
-    TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("lesson", lesson))
+    app.add_handler(CallbackQueryHandler(handle_buttons))
 
-    print("ربات اجرا شد...")
+    print("ربات آماده است...")
     app.run_polling()
