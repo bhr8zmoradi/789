@@ -1,67 +1,57 @@
 import json
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
 
-# بارگذاری توکن ربات
+# Load config
 with open("config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
-TOKEN = config["TOKEN"]
 
-# بارگذاری فهرست فصل‌ها
+# Load content
 with open("content_7th.json", "r", encoding="utf-8") as f:
     content_7th = json.load(f)
 
-# تعریف مسیر فایل‌های درسنامه به تفکیک فصل
-LESSON_FILES = {
-    "عددهای صحیح": "lesson_ch2_7th_v3.json"
-    # سایر فصل‌ها را در آینده اضافه کن
-}
+# Setup logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+)
 
-logging.basicConfig(level=logging.INFO)
-
+# /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
-    for فصل in content_7th["فصل‌ها"]:
-        keyboard.append([InlineKeyboardButton(فصل["عنوان"], callback_data=f"فصل:{فصل['عنوان']}")])
-    await update.message.reply_text("یکی از فصل‌های زیر را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+    for i, chapter in enumerate(content_7th["فصل‌ها"]):
+        keyboard.append([
+            InlineKeyboardButton(chapter["عنوان"], callback_data=f"chapter_{i}")
+        ])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("یکی از فصل‌های زیر را انتخاب کن:", reply_markup=reply_markup)
 
-async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Callback handler
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
 
-    if data.startswith("فصل:"):
-        selected_chapter = data.split(":")[1]
-        filename = LESSON_FILES.get(selected_chapter)
-
-        if not filename:
-            await query.edit_message_text("برای این فصل هنوز درسنامه‌ای ثبت نشده است.")
-            return
-
-        with open(filename, "r", encoding="utf-8") as f:
-            lesson_data = json.load(f)
-
+    if query.data.startswith("chapter_"):
+        chapter_index = int(query.data.split("_")[1])
+        chapter = content_7th["فصل‌ها"][chapter_index]
         keyboard = [
-            [InlineKeyboardButton(lesson["عنوان"], callback_data=f"درس:{selected_chapter}:{lesson['عنوان']}")]
-            for lesson in lesson_data["درسنامه‌ها"]
+            [InlineKeyboardButton(sub, callback_data=f"ignore_{i}")]
+            for i, sub in enumerate(chapter["زیرمباحث"])
         ]
-        await query.edit_message_text(f"مباحث فصل «{selected_chapter}» را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text=f"زیرمباحث فصل «{chapter['عنوان']}»:", reply_markup=reply_markup
+        )
 
-    elif data.startswith("درس:"):
-        _, chapter, lesson_title = data.split(":", 2)
-        filename = LESSON_FILES.get(chapter)
-        if filename:
-            with open(filename, "r", encoding="utf-8") as f:
-                lesson_data = json.load(f)
-                for lesson in lesson_data["درسنامه‌ها"]:
-                    if lesson["عنوان"] == lesson_title:
-                        await query.edit_message_text(f"📘 {lesson['عنوان']}\n\n{lesson['متن']}")
-                        return
-        await query.edit_message_text("خطایی در بارگذاری درس پیش آمده.")
+# Ignore handler to avoid errors for subtopics (can be extended later)
+async def ignore_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer("این بخش هنوز فعال نشده است.", show_alert=True)
 
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TOKEN).build()
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(config["TOKEN"]).build()
+
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern=r"^chapter_"))
+    app.add_handler(CallbackQueryHandler(ignore_handler, pattern=r"^ignore_"))
+
     app.run_polling()
