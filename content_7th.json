@@ -1,42 +1,45 @@
-[
-  {
-    "chapter": "فصل دوم",
-    "title": "اعداد صحیح",
-    "file": "lesson_ch2_7th_v1.json"
-  },
-  {
-    "chapter": "فصل سوم",
-    "title": "عبارت‌های جبری",
-    "file": "lesson_ch3_7th_v2.json"
-  },
-  {
-    "chapter": "فصل چهارم",
-    "title": "خط، نیم خط و پاره خط",
-    "file": "lesson_ch4_7th.json"
-  },
-  {
-    "chapter": "فصل پنجم",
-    "title": "اعداد اول",
-    "file": "lesson_ch5_7th_v1.json"
-  },
-  {
-    "chapter": "فصل ششم",
-    "title": "سطح و حجم",
-    "file": "lesson_ch6_7th.json"
-  },
-  {
-    "chapter": "فصل هفتم",
-    "title": "توان و جذر",
-    "file": "lesson_ch7_7th_full.json"
-  },
-  {
-    "chapter": "فصل هشتم",
-    "title": "بردار و مختصات",
-    "file": "lesson_ch8_7th.json"
-  },
-  {
-    "chapter": "فصل نهم",
-    "title": "آمار و احتمال",
-    "file": "lesson_ch9_7th.json"
-  }
-]
+{
+  "grade": "هفتم",
+  "chapters": [
+    {
+      "id": "ch2",
+      "title": "فصل دوم: اعداد صحیح",
+      "file": "lesson_ch2_7th_v1.json"
+    },
+    {
+      "id": "ch3",
+      "title": "فصل سوم: عبارت‌های جبری",
+      "file": "lesson_ch3_7th_v2.json"
+    },
+    {
+      "id": "ch4",
+      "title": "فصل چهارم: خط و زاویه",
+      "file": "lesson_ch4_7th.json"
+    },
+    {
+      "id": "ch5",
+      "title": "فصل پنجم: اعداد اول",
+      "file": "lesson_ch5_7th_v1.json"
+    },
+    {
+      "id": "ch6",
+      "title": "فصل ششم: سطح و حجم",
+      "file": "lesson_ch6_7th.json"
+    },
+    {
+      "id": "ch7",
+      "title": "فصل هفتم: توان و جذر",
+      "file": "lesson_ch7_7th_full.json"
+    },
+    {
+      "id": "ch8",
+      "title": "فصل هشتم: بردار و مختصات",
+      "file": "lesson_ch8_7th.json"
+    },
+    {
+      "id": "ch9",
+      "title": "فصل نهم: آمار و احتمال",
+      "file": "lesson_ch9_7th.json"
+    }
+  ]
+}
