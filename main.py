@@ -1,135 +1,128 @@
-# main.py
-import logging
+import os
 import json
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-logging.basicConfig(level=logging.INFO)
+API_TOKEN = os.environ.get("API_TOKEN")  # دریافت توکن از متغیر محیطی
 
-START, CHAPTER_SELECT, LESSON_FLOW = range(3)
-
-MAIN_MENU = [
-    ["📘 آموزش", "📝 حل تمرینات", "📊 آزمون‌های آنلاین"]
-]
-
-CHAPTER_FILES = {
-    "فصل ۲: اعداد صحیح": "lesson_ch2_7th_v1.json",
-    "فصل ۳: عبارت‌های جبری": "lesson_ch3_7th_v2.json",
-    "فصل ۴: خط و زاویه": "lesson_ch4_7th.json",
-    "فصل ۵: اعداد اول": "lesson_ch5_7th_v1.json",
-    "فصل ۶: سطح و حجم": "lesson_ch6_7th.json",
-    "فصل ۷: توان": "lesson_ch7_7th_full.json",
-    "فصل ۸: بردار و مختصات": "lesson_ch8_7th.json",
-    "فصل ۹: آمار و احتمال": "lesson_ch9_7th.json"
+# متغیرهای سراسری
+user_state = {}
+content_file = 'content_7th.json'
+lesson_files = {
+    "اعداد صحیح": "lesson_ch2_7th_v1.json",
+    "عبارت‌های جبری": "lesson_ch3_7th_v2.json",
+    "خط و زاویه": "lesson_ch4_7th.json",
+    "اعداد اول": "lesson_ch5_7th_v1.json",
+    "سطح و حجم": "lesson_ch6_7th.json",
+    "توان و جذر": "lesson_ch7_7th_full.json",
+    "بردار و مختصات": "lesson_ch8_7th.json",
+    "آمار و احتمال": "lesson_ch9_7th.json"
 }
 
+
+def load_json(filename):
+    with open(filename, encoding="utf-8") as f:
+        return json.load(f)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 خوش آمدید! یکی از گزینه‌های زیر را انتخاب کنید:",
-        reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
-    )
-    return START
+    user_state[update.effective_chat.id] = {}
+    keyboard = [["آموزش"], ["حل تمرینات"], ["آزمون‌های آنلاین"]]
+    await update.message.reply_text("🎓 به ربات آموزشی ریاضی خوش آمدید!\nیکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True))
 
-async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-    if choice == "📘 آموزش":
-        await update.message.reply_text("لطفاً یک فصل را انتخاب کنید:",
-            reply_markup=ReplyKeyboardMarkup([[k] for k in CHAPTER_FILES.keys()], resize_keyboard=True))
-        return CHAPTER_SELECT
-    else:
-        await update.message.reply_text("این بخش هنوز فعال نشده است.")
-        return START
 
-async def chapter_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chapter = update.message.text
-    if chapter not in CHAPTER_FILES:
-        await update.message.reply_text("لطفاً یکی از فصل‌های لیست را انتخاب کنید.")
-        return CHAPTER_SELECT
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    text = update.message.text
 
-    context.user_data["current_chapter_file"] = CHAPTER_FILES[chapter]
-    context.user_data["current_lesson_index"] = 0
-    return await show_lesson_content(update, context)
+    state = user_state.get(chat_id, {})
 
-async def show_lesson_content(update, context):
-    chapter_file = context.user_data["current_chapter_file"]
-    lesson_index = context.user_data["current_lesson_index"]
-    with open(chapter_file, encoding="utf-8") as f:
-        data = json.load(f)
+    # مرحله اول: انتخاب گزینه‌ی اصلی
+    if text == "آموزش":
+        data = load_json(content_file)
+        state["mode"] = "learning"
+        user_state[chat_id] = state
+        keyboard = [[f["title"]] for f in data["chapters"]]
+        await update.message.reply_text("📚 فصل مورد نظر را انتخاب کنید:", reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True))
 
-    lesson = data["lessons"][lesson_index]
-    context.user_data["current_lesson"] = lesson
-    context.user_data["state"] = "showing_practice"
-    context.user_data["practice_index"] = 0
-    context.user_data["quiz_index"] = 0
-    context.user_data["correct_quiz_answers"] = 0
-
-    await update.message.reply_text(f"📖 {lesson['title']}\n\n{lesson['content']}")
-    return await send_next_practice(update, context)
-
-async def send_next_practice(update, context):
-    lesson = context.user_data["current_lesson"]
-    idx = context.user_data["practice_index"]
-
-    if idx >= len(lesson["practices"]):
-        context.user_data["state"] = "doing_quiz"
-        return await start_quiz(update, context)
-
-    question = lesson["practices"][idx]["question"]
-    await update.message.reply_text(f"✏️ تمرین {idx+1}:\n{question}")
-    return LESSON_FLOW
-
-async def handle_practice_response(update, context):
-    lesson = context.user_data["current_lesson"]
-    idx = context.user_data["practice_index"]
-    exercise = lesson["practices"][idx]
-
-    await update.message.reply_text(f"✅ پاسخ درست: {exercise['answer']}\n🧠 توضیح: {exercise['explanation']}")
-    context.user_data["practice_index"] += 1
-    return await send_next_practice(update, context)
-
-async def start_quiz(update, context):
-    lesson = context.user_data["current_lesson"]
-    idx = context.user_data["quiz_index"]
-
-    if idx >= len(lesson["quiz"]):
-        correct = context.user_data["correct_quiz_answers"]
-        if correct >= 3:
-            await update.message.reply_text(f"🎉 تبریک! شما با موفقیت این درس را گذراندید. (نمره: {correct}/5)")
-            return await chapter_select(update, context)
+    # مرحله دوم: انتخاب فصل
+    elif state.get("mode") == "learning" and "chapter" not in state:
+        if text in lesson_files:
+            state["chapter"] = text
+            state["lesson_data"] = load_json(lesson_files[text])
+            state["step"] = 0
+            user_state[chat_id] = state
+            await send_lesson(update, context)
         else:
-            await update.message.reply_text(f"🔁 شما تنها به {correct} سوال پاسخ درست دادید. لطفاً دوباره درس را مرور کنید.")
-            return await show_lesson_content(update, context)
+            await update.message.reply_text("فصل معتبر نیست.")
 
-    question = lesson["quiz"][idx]["question"]
-    context.user_data["current_question"] = lesson["quiz"][idx]
-    await update.message.reply_text(f"📝 سوال {idx+1}:\n{question}")
-    return LESSON_FLOW
+    # مرحله سوم: پاسخ‌دهی به تمرین یا آزمون
+    elif "quiz_mode" in state:
+        correct_answer = state["quiz_data"][state["quiz_step"]]["answer"]
+        if text.strip() == correct_answer.strip():
+            state["score"] += 1
+        state["quiz_step"] += 1
+        if state["quiz_step"] < len(state["quiz_data"]):
+            await send_quiz_question(update, context)
+        else:
+            await show_quiz_result(update, context)
 
-async def handle_quiz_response(update, context):
-    user_answer = update.message.text.strip()
-    question = context.user_data["current_question"]
-    if user_answer == question["answer"]:
-        context.user_data["correct_quiz_answers"] += 1
-        await update.message.reply_text("✅ درست!")
     else:
-        await update.message.reply_text(f"❌ نادرست. جواب صحیح: {question['answer']}")
+        await update.message.reply_text("لطفاً یکی از گزینه‌ها را از منوی زیر انتخاب کنید.")
 
-    context.user_data["quiz_index"] += 1
-    return await start_quiz(update, context)
+
+async def send_lesson(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    state = user_state[chat_id]
+    lessons = state["lesson_data"]["lessons"]
+    if state["step"] < len(lessons):
+        lesson = lessons[state["step"]]
+        await update.message.reply_text(f"📖 *درس {lesson['title']}*\n\n{lesson['text']}", parse_mode='Markdown')
+
+        # سپس تمرین‌ها
+        for i, ex in enumerate(lesson.get("exercises", []), 1):
+            await update.message.reply_text(f"📝 تمرین {i}:\n{ex['question']}\n✅ پاسخ: {ex['answer']}\n📘 توضیح: {ex['explanation']}")
+
+        # سپس آزمون
+        state["quiz_data"] = lesson.get("quiz", [])
+        state["quiz_step"] = 0
+        state["score"] = 0
+        state["quiz_mode"] = True
+        user_state[chat_id] = state
+        await update.message.reply_text("🧪 حالا آزمون درس را شروع می‌کنیم:")
+        await send_quiz_question(update, context)
+    else:
+        await update.message.reply_text("🎉 آموزش این فصل به پایان رسید. برای ادامه، یکی از گزینه‌ها را انتخاب کنید.")
+        user_state[chat_id] = {}
+
+
+async def send_quiz_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    state = user_state[chat_id]
+    question_data = state["quiz_data"][state["quiz_step"]]
+    await update.message.reply_text(f"❓ سوال {state['quiz_step']+1}: {question_data['question']}")
+
+
+async def show_quiz_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    state = user_state[chat_id]
+    score = state["score"]
+    total = len(state["quiz_data"])
+    state.pop("quiz_mode", None)
+
+    if score >= 3:
+        await update.message.reply_text(f"✅ آزمون با موفقیت انجام شد.\nنمره شما: {score}/{total}")
+        state["step"] += 1
+        user_state[chat_id] = state
+        await send_lesson(update, context)
+    else:
+        await update.message.reply_text(f"❌ نمره شما: {score}/{total}\nبرای موفقیت باید حداقل ۳ سوال درست پاسخ دهید.\nلطفاً دوباره این درس را بخوانید.")
+        # درس را تکرار می‌کند
+        await send_lesson(update, context)
+
 
 if __name__ == '__main__':
-    app = ApplicationBuilder().token("YOUR_BOT_TOKEN").build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            START: [MessageHandler(filters.TEXT, main_menu_handler)],
-            CHAPTER_SELECT: [MessageHandler(filters.TEXT, chapter_select)],
-            LESSON_FLOW: [MessageHandler(filters.TEXT, handle_practice_response),
-                          MessageHandler(filters.TEXT, handle_quiz_response)],
-        },
-        fallbacks=[]
-    )
-
-    app.add_handler(conv_handler)
+    app = ApplicationBuilder().token(API_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.run_polling()
